@@ -7,7 +7,7 @@ import { MAX_FASSUNG, callContradiction, currentClaim, doubt, minRuhm, nextRound
 import type { Actor, GameState, LegendEntry } from "../lib/gameState";
 import StoryBuilder from "./StoryBuilder";
 import DialogBox from "./DialogBox";
-import CardView from "./CardView";
+import CardView, { FaceCard } from "./CardView";
 
 interface BluffGameProps {
   state: GameState;
@@ -138,6 +138,12 @@ export default function BluffGame({ state, setState, onGameEnd }: BluffGameProps
                 {c.teller === "player" ? "Du" : opponentName} · Ruhm {ruhm(c)}
                 {c.einsatz === 2 && <span className="ml-1 text-red-400">· haut auf den Tisch (×2)</span>}
               </p>
+              <div className={`my-1 flex gap-1.5 ${c.teller === "player" ? "justify-end" : ""}`}>
+                <FaceCard kind="gegner" id={c.gegner} small plain />
+                {c.umstaende.map((u) => (
+                  <FaceCard key={u} kind="umstand" id={u} small plain />
+                ))}
+              </div>
               <p className="italic text-amber-100">"{c.text}"</p>
               {c.flavor && <p className="text-sm text-amber-300/80">{c.flavor}</p>}
               {c.crowd && (
@@ -243,7 +249,7 @@ export default function BluffGame({ state, setState, onGameEnd }: BluffGameProps
         </div>
       )}
 
-      {state.phase !== "reveal" && (
+      {state.phase !== "reveal" && !(state.phase === "turn" && state.turn === "player") && (
         <div>
           <p className="mb-2 font-title text-sm uppercase tracking-widest text-amber-500">Deine Trophäen</p>
           <div className="flex flex-wrap gap-2">

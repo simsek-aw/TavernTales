@@ -12,27 +12,29 @@ export interface GegnerDef {
   trophaee: string;
   ruhm: number;
   copies: number;
+  icon: string;
 }
 
 export interface UmstandDef {
   id: UmstandId;
   label: string;
   phrase: string;
+  icon: string;
 }
 
 export const GEGNER: readonly GegnerDef[] = [
-  { id: "wolf", name: "Wolf", akkusativ: "einen Wolf", trophaee: "Wolfszahn", ruhm: 1, copies: 5 },
-  { id: "bandit", name: "Bandit", akkusativ: "einen Banditen", trophaee: "Banditenmesser", ruhm: 2, copies: 5 },
-  { id: "troll", name: "Troll", akkusativ: "einen Troll", trophaee: "Trollhauer", ruhm: 3, copies: 4 },
-  { id: "riese", name: "Riese", akkusativ: "einen Riesen", trophaee: "Riesenknochen", ruhm: 4, copies: 4 },
-  { id: "drache", name: "Drache", akkusativ: "einen Drachen", trophaee: "Drachenschuppe", ruhm: 5, copies: 2 },
+  { id: "wolf", icon: "🐺", name: "Wolf", akkusativ: "einen Wolf", trophaee: "Wolfszahn", ruhm: 1, copies: 5 },
+  { id: "bandit", icon: "🗡️", name: "Bandit", akkusativ: "einen Banditen", trophaee: "Banditenmesser", ruhm: 2, copies: 5 },
+  { id: "troll", icon: "🧌", name: "Troll", akkusativ: "einen Troll", trophaee: "Trollhauer", ruhm: 3, copies: 4 },
+  { id: "riese", icon: "🗿", name: "Riese", akkusativ: "einen Riesen", trophaee: "Riesenknochen", ruhm: 4, copies: 4 },
+  { id: "drache", icon: "🐉", name: "Drache", akkusativ: "einen Drachen", trophaee: "Drachenschuppe", ruhm: 5, copies: 2 },
 ];
 
 export const UMSTAENDE: readonly UmstandDef[] = [
-  { id: "allein", label: "Allein", phrase: "ganz allein" },
-  { id: "nachts", label: "Nachts", phrase: "mitten in der Nacht" },
-  { id: "verwundet", label: "Verwundet", phrase: "schwer verwundet" },
-  { id: "unbewaffnet", label: "Unbewaffnet", phrase: "ohne Waffe" },
+  { id: "allein", icon: "👤", label: "Allein", phrase: "ganz allein" },
+  { id: "nachts", icon: "🌙", label: "Nachts", phrase: "mitten in der Nacht" },
+  { id: "verwundet", icon: "🩸", label: "Verwundet", phrase: "schwer verwundet" },
+  { id: "unbewaffnet", icon: "✊", label: "Unbewaffnet", phrase: "ohne Waffe" },
 ];
 
 export const HAND_SIZE = 4;

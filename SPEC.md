@@ -41,6 +41,13 @@ Die Abwechslung kommt aus den Kombinationen (5 Gegner × 11 Umstand-Kombinatione
 
 ---
 
+## BEDIENUNG (Karten statt Menüs)
+
+- **Tisch-Plätze:** 1 Gegner + bis zu 2 Umstände. Dort entsteht die Geschichte, Ruhm wird live angezeigt.
+- **Eigene Trophäen:** Obere Kartenhälfte antippen legt den Gegner, untere Hälfte den Umstand. So erzählt man wahr.
+- **„Erfinden“:** Aufklappbarer Stapel aller Gegner- und Umstandskarten (gestrichelt). Wer daraus legt, was er nicht hat, lügt.
+- Erzählte Geschichten liegen als Karten auf dem Tisch. Beim Gegner fehlt natürlich der Hinweis „belegt/erfunden“.
+
 ## SPIELABLAUF
 
 1. Beide ziehen **4 Trophäen** (verdeckt).
