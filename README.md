@@ -17,4 +17,4 @@ npm run build
 
 ## Gameplay
 
-Chapter 1 pits the player against Aldric der Gefeierte in a tavern bluffing game: tell a story using the 4-part story builder, decide whether to believe or doubt your opponent's stories, and drive their Respekt to zero before they drain yours. Winning Chapter 1 unlocks Chapter 2 against Grok der Grüne on the marketplace.
+You arrive broke at the tavern "Zum Krummen Krug". The only job on the board goes to whoever out-boasts Aldric der Gefeierte in *Prahlen*, a tavern game played with trophy cards. Each player holds 4 trophies (enemy + circumstance). Stories must top the previous one in Ruhm; instead of topping, you can doubt and force the teller to show their trophies. Liars and wrong doubters lose Respekt. Winning Chapter 1 leads to Chapter 2 against Grok der Grüne, who already knows how you play.

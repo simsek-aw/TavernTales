@@ -1,134 +1,175 @@
-import { GEGNER, WAFFE, SZENE } from "./cardData";
-import type { Card } from "./cardData";
-import type { BiasType, Opponent, Story } from "./gameState";
+import { ALL_CLAIMS, DECK, GEGNER, HAND_SIZE, MAX_RUHM, isBacked, ruhm } from "./cardData";
+import type { Card, Claim } from "./cardData";
+import { crowdComment } from "./dialogSystem";
+import { currentClaim, findContradiction, minRuhm } from "./gameState";
+import type { GameState, PlayerRecord, TellExtras, ToldClaim } from "./gameState";
 
-const GEGNER_TIER: Record<string, number> = {
-  "Goblin-Krieger": 1,
-  Troll: 1,
-  "Banditen-Boss": 1,
-  "Dunkler Ritter": 2,
-  Magier: 2,
-  "Kult-Anführer": 2,
-  Riese: 2,
-  Drache: 3,
-  Dämon: 3,
-  Koloss: 3,
-};
+export type OpponentMove =
+  | { type: "doubt" }
+  | { type: "widerspruch" }
+  | { type: "tell"; claim: Claim; extras: TellExtras };
 
-const WAFFE_TIER: Record<string, number> = {
-  Faustkampf: 1,
-  Kampftechniken: 1,
-  Kette: 1,
-  Schildsplitter: 1,
-  "Verfluchter Dolch": 2,
-  Giftpfeil: 2,
-  "Feuer-Bombe": 2,
-  "Mystischer Ring": 2,
-  "Legendäres Schwert": 3,
-  Magie: 3,
-};
-
-const SZENE_TIER: Record<string, number> = {
-  Taverne: 1,
-  Brücke: 1,
-  Turnier: 1,
-  Schlachtfeld: 2,
-  Hinterhalt: 2,
-  Verfolgung: 2,
-  Dungeon: 2,
-  Belagerung: 3,
-  Nachtkampf: 3,
-  "Letzter Stand": 3,
-};
-
-/** Plausibility: how well do the tiers of gegner/waffe/szene line up? Matched tiers read as a believable story. */
-export function scorePlausibility(story: Pick<Story, "gegner" | "waffe" | "szene">): number {
-  const g = GEGNER_TIER[story.gegner] ?? 2;
-  const w = WAFFE_TIER[story.waffe] ?? 2;
-  const s = SZENE_TIER[story.szene] ?? 2;
-  const spread = Math.max(g, w, s) - Math.min(g, w, s);
-  // spread 0 -> 1.0 plausible, spread 2 -> ~0.3
-  return Math.max(0, 1 - spread * 0.35);
+function combinations<T>(pool: readonly T[], k: number): T[][] {
+  const out: T[][] = [];
+  const pick: T[] = [];
+  (function rec(start: number) {
+    if (pick.length === k) {
+      out.push([...pick]);
+      return;
+    }
+    for (let i = start; i <= pool.length - (k - pick.length); i++) {
+      pick.push(pool[i]);
+      rec(i + 1);
+      pick.pop();
+    }
+  })(0);
+  return out;
 }
 
-function scoreCharacterBias(story: Story, opponent: Opponent): number {
-  switch (opponent.biasType) {
-    case "vain": {
-      // Aldric believes stories that reflect glory back on martial prowess (high-tier weapons/scenes)
-      const heroic =
-        (WAFFE_TIER[story.waffe] ?? 2) >= 3 || (SZENE_TIER[story.szene] ?? 2) >= 3;
-      return heroic ? 0.8 : 0.4;
-    }
-    case "direct": {
-      // Grok wants concrete, provable claims: low/mid-tier, grounded combos read as credible
-      const grounded = (GEGNER_TIER[story.gegner] ?? 2) <= 2;
-      return grounded ? 0.7 : 0.3;
-    }
-    case "aggressive":
-      return 0.5;
-    default:
-      return 0.5;
+const handCache = new Map<string, Card[][]>();
+
+/** Alle Hände, die der Spieler haben kann – aus den Karten, die der Gegner nicht selbst hält. */
+function possibleHands(ownHand: readonly Card[]): Card[][] {
+  const key = ownHand.map((c) => c.id).sort((a, b) => a - b).join(",");
+  let hands = handCache.get(key);
+  if (!hands) {
+    const ownIds = new Set(ownHand.map((c) => c.id));
+    hands = combinations(DECK.filter((c) => !ownIds.has(c.id)), HAND_SIZE);
+    handCache.clear();
+    handCache.set(key, hands);
   }
+  return hands;
 }
 
-function scoreRespectThreshold(opponent: Opponent): number {
-  // The more desperate (lower respekt), the less willing to concede belief -> lower score
-  return opponent.respekt / 5;
+/** Geschätzte Bluff-Neigung des Spielers aus aufgedeckten Geschichten (Prior 1/3). */
+export function estimateBluffRate(record: PlayerRecord): number {
+  return (record.revealedLies + 1) / (record.revealed + 3);
 }
 
-function scoreStoryConsistency(story: Story, opponent: Opponent): number {
-  const repeated = opponent.knownStories.some(
-    (s) => s.gegner === story.gegner && s.waffe === story.waffe && s.szene === story.szene
+function jitter(noise: number): number {
+  return (Math.random() * 2 - 1) * noise;
+}
+
+/**
+ * P(wahr | Geschichte erzählt) nach Bayes, exakt über alle möglichen Spielerhände
+ * (C(16,4) = 1820). Ehrliche Spieler erzählen eine Geschichte, die ihre Hand belegt.
+ * Gelogen wird vor allem, wenn die Hand keine wahre Übertrumpfung mehr hergibt.
+ * Hält der Gegner z. B. beide Drachen, ist jede Drachen-Geschichte sicher gelogen.
+ */
+export function probTrue(claim: ToldClaim, state: GameState): number {
+  const level = ruhm(claim);
+  const idx = state.claims.lastIndexOf(claim);
+  const previous = idx > 0 ? state.claims[idx - 1] : null;
+  const minAtClaim = previous ? ruhm(previous) + 1 : 1;
+  const atLevel = ALL_CLAIMS.filter((c) => ruhm(c) === level);
+  const reachable = ALL_CLAIMS.filter((c) => ruhm(c) >= minAtClaim);
+
+  const b = estimateBluffRate(state.record);
+  const bVoluntary = b * 0.5;
+  const bForced = Math.min(0.95, 0.4 + b);
+
+  let truth = 0;
+  let lie = 0;
+  for (const hand of possibleHands(state.opponentHand)) {
+    const hasTruthfulOption = reachable.some((c) => isBacked(c, hand));
+    const pLieHand = hasTruthfulOption ? bVoluntary : bForced;
+    if (isBacked(claim, hand)) {
+      truth += (1 - pLieHand) / atLevel.filter((c) => isBacked(c, hand)).length;
+    }
+    lie += pLieHand / atLevel.length;
+  }
+  let p = truth + lie === 0 ? 0 : truth / (truth + lie);
+  // Wer zu oft lügt, verliert die Fassung – das sieht man ihm an.
+  if (claim.teller === "player" && state.fassung === 0 && !claim.truthful) p *= 0.5;
+  return p;
+}
+
+function withFlavor(state: GameState, truthful: boolean): string | null {
+  const { tell, neutralFlavor } = state.opponent.persona;
+  if (Math.random() < (truthful ? tell.pWhenTruthful : tell.pWhenLying)) return tell.text;
+  return Math.random() < 0.4 ? neutralFlavor[Math.floor(Math.random() * neutralFlavor.length)] : null;
+}
+
+function pickEinsatz(state: GameState, truthful: boolean): 1 | 2 {
+  const p = state.opponent.persona;
+  return Math.random() < (truthful ? p.einsatzWhenTruthful : p.einsatzWhenLying) ? 2 : 1;
+}
+
+type Story = Pick<Claim, "gegner" | "umstaende">;
+
+/** Hält er sich diesen Zug an seine Legende? Aldric vergisst gern, was er erzählt hat. */
+function legendFilter(state: GameState): (c: Story) => boolean {
+  const careful = Math.random() < state.opponent.persona.legendDiscipline;
+  return (c) => !careful || !findContradiction(state.legends.opponent, c);
+}
+
+function truthfulOptions(state: GameState, min: number, allowed: (c: Story) => boolean) {
+  return ALL_CLAIMS.filter((c) => ruhm(c) >= min && isBacked(c, state.opponentHand) && allowed(c)).sort(
+    (a, b) => ruhm(a) - ruhm(b)
   );
-  return repeated ? 0.1 : 0.9;
 }
 
-export interface BelieveBreakdown {
-  plausibility: number;
-  characterBias: number;
-  respectThreshold: number;
-  storyConsistency: number;
-  believeScore: number;
-  decision: "GLAUBEN" | "ANZWEIFELN";
+/** Bluff: knapp über dem Minimum, bevorzugt Halbwahrheiten (Gegner in der Hand). */
+function chooseBluff(state: GameState, min: number, allowed: (c: Story) => boolean): Story | null {
+  const candidates = ALL_CLAIMS.filter(
+    (c) => ruhm(c) >= min && ruhm(c) <= min + 1 && !isBacked(c, state.opponentHand) && allowed(c)
+  );
+  if (!candidates.length) return null;
+  const score = (c: Story) =>
+    (state.opponentHand.some((h) => h.gegner === c.gegner) ? 2 : 0) +
+    c.umstaende.filter((u) => state.opponentHand.some((h) => h.umstand === u)).length +
+    Math.random() * 1.5;
+  return [...candidates].sort((a, b) => score(b) - score(a))[0];
 }
 
-export function decideBelieve(story: Story, opponent: Opponent): BelieveBreakdown {
-  const plausibility = scorePlausibility(story);
-  const characterBias = scoreCharacterBias(story, opponent);
-  const respectThreshold = scoreRespectThreshold(opponent);
-  const storyConsistency = scoreStoryConsistency(story, opponent);
-
-  const believeScore =
-    plausibility * 0.4 +
-    characterBias * 0.3 +
-    respectThreshold * 0.2 +
-    storyConsistency * 0.1;
-
-  // Higher difficulty opponents demand a higher bar before believing.
-  const threshold = 0.6 + (opponent.difficulty - 1) * 0.05;
-
+function tellMove(state: GameState, claim: Story): OpponentMove {
+  const truthful = isBacked(claim, state.opponentHand);
   return {
-    plausibility,
-    characterBias,
-    respectThreshold,
-    storyConsistency,
-    believeScore,
-    decision: believeScore > threshold ? "GLAUBEN" : "ANZWEIFELN",
+    type: "tell",
+    claim: { ...claim, einsatz: pickEinsatz(state, truthful) },
+    extras: { flavor: withFlavor(state, truthful), crowd: crowdComment(state.opponent, truthful) },
   };
 }
 
-function randomFrom<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+export function decideOpponentMove(state: GameState): OpponentMove {
+  const persona = state.opponent.persona;
+  const current = currentClaim(state);
+  const min = minRuhm(state);
+  const allowed = legendFilter(state);
+  const options = truthfulOptions(state, min, allowed);
+
+  // Eröffnung: niedrig und wahr, damit Luft nach oben bleibt.
+  if (!current) {
+    const pool = options.length ? options : truthfulOptions(state, min, () => true);
+    const low = pool.slice(0, 3);
+    return tellMove(state, low[Math.floor(Math.random() * low.length)]);
+  }
+
+  // Ein bemerkter Widerspruch ist ein sicherer Treffer.
+  if (current.contradicts && Math.random() < persona.noticeContradiction) return { type: "widerspruch" };
+
+  if (min > MAX_RUHM) return { type: "doubt" };
+
+  const pLie = 1 - probTrue(current, state) + jitter(persona.noise);
+  // Mit dem Rücken zur Wand wird man misstrauischer.
+  const threshold = persona.doubtThreshold - (state.opponentRespekt <= current.einsatz ? 0.08 : 0);
+
+  if (pLie > threshold) return { type: "doubt" };
+
+  if (options.length) {
+    const pick = Math.random() < 0.7 ? options[0] : options[Math.floor(Math.random() * options.length)];
+    return tellMove(state, pick);
+  }
+
+  // Keine wahre Übertrumpfung: Bluffen lohnt, wenn es wahrscheinlicher durchkommt,
+  // als ein Zweifel trifft. Große Geschichten werden eher angezweifelt.
+  const bluff = chooseBluff(state, min, allowed);
+  if (!bluff) return { type: "doubt" };
+  const pBluffSurvives = 0.75 - 0.5 * (ruhm(bluff) / MAX_RUHM) + (persona.bluffRate - 0.5) * 0.4;
+  return pBluffSurvives > pLie ? tellMove(state, bluff) : { type: "doubt" };
 }
 
-/** Opponent tells their own story each round (used as ground-truth card too). */
-export function generateOpponentCard(): Card {
-  return {
-    gegner: randomFrom(GEGNER),
-    waffe: randomFrom(WAFFE),
-    szene: randomFrom(SZENE),
-    konsequenz: randomFrom(["...ich war verletzt", "...es war eine Falle", "...ich war allein"]),
-  };
+/** Kurzbeschreibung für die Regel-Übersicht: wie viele Trophäen es je Gegner gibt. */
+export function deckSummary(): string {
+  return GEGNER.map((g) => `${g.name} ×${g.copies}`).join(" · ");
 }
-
-export type { BiasType };
