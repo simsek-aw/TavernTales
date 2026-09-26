@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { createInitialState } from "../lib/gameState";
-import type { Actor, GameState, Opponent, PlayerRecord } from "../lib/gameState";
+import type { Actor, GameState, LegendEntry, Opponent, PlayerRecord } from "../lib/gameState";
 import { ALDRIC, GROK, getDialogs } from "../lib/dialogSystem";
 import TaverneIntro from "./TaverneIntro";
 import BluffGame from "./BluffGame";
@@ -13,10 +13,15 @@ export default function GameScene() {
   const [screen, setScreen] = useState<Screen>("intro");
   const [state, setState] = useState<GameState>(() => createInitialState(ALDRIC, 1, FRESH_RECORD));
   const [endResult, setEndResult] = useState<Actor | null>(null);
+  // Was aus Kapitel 1 mitgenommen wird: aufgedeckte Lügen und die eigene Legende.
+  const [carryOver, setCarryOver] = useState<{ record: PlayerRecord; legend: LegendEntry[] }>({
+    record: FRESH_RECORD,
+    legend: [],
+  });
 
-  // Grok hat von deinem Spiel gehört: Er startet mit dem, was in Kapitel 1 aufgedeckt wurde.
-  function startChapter(opponent: Opponent, chapter: 1 | 2, record: PlayerRecord) {
-    setState(createInitialState(opponent, chapter, record));
+  // Grok hat von deinem Spiel gehört: Er kennt deine Legende und deine aufgedeckten Lügen.
+  function startChapter(opponent: Opponent, chapter: 1 | 2, record: PlayerRecord, legend: LegendEntry[] = []) {
+    setState(createInitialState(opponent, chapter, record, legend));
     setEndResult(null);
     setScreen("intro");
   }
@@ -30,8 +35,11 @@ export default function GameScene() {
   const won = endResult === "player";
 
   function handleContinue() {
-    if (state.chapter === 1 && won) startChapter(GROK, 2, state.record);
-    else if (state.chapter === 2 && !won) startChapter(GROK, 2, state.record);
+    if (state.chapter === 1 && won) {
+      const next = { record: state.record, legend: state.legends.player };
+      setCarryOver(next);
+      startChapter(GROK, 2, next.record, next.legend);
+    } else if (state.chapter === 2 && !won) startChapter(GROK, 2, carryOver.record, carryOver.legend);
     else startChapter(ALDRIC, 1, FRESH_RECORD);
   }
 

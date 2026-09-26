@@ -60,6 +60,22 @@ Die Abwechslung kommt aus den Kombinationen (5 Gegner × 11 Umstand-Kombinatione
 - Start 3. Eine Lüge kostet 1, eine wahre Geschichte bringt 1 zurück.
 - Bei 0 Fassung merkt der Gegner Lügen deutlich leichter. Wer dauernd lügt, fliegt auf.
 
+### Legende & Widerspruch
+- Große Taten (Troll, Riese, Drache), die geglaubt wurden, gehen in die **Legende** ein: pro Runde und Seite die höchste übertrumpfte oder bewiesene Geschichte.
+- Die eigene Legende wird **in Kapitel 2 mitgenommen**. Grok kennt deine Geschichten aus dem Krug.
+- Erzählt jemand dieselbe große Tat mit anderen Umständen, kann der andere **„Widerspruch!“** rufen: Der Erzähler verliert 1 Respekt, egal was die Karten sagen. Wer grundlos ruft, verliert selbst 1 Respekt.
+- Dadurch bremst die eigene Legende spätere Geschichten aus und will geplant sein. Der Story-Builder warnt vor eigenen Widersprüchen.
+
+### Publikum
+- Bei ~45 % der Gegner-Geschichten redet ein Gast dazwischen („stimmt“ oder „gelogen“).
+- Jeder Gast hat eine feste, **verborgene Zuverlässigkeit**. Wem man trauen kann, lernt man durchs Spielen:
+
+| Kapitel 1 | Zuverl. | Kapitel 2 | Zuverl. |
+|---|---|---|---|
+| Bruno, der alte Jäger | 85 % | Karawanenwächterin | 80 % |
+| Betrunkener Bauer | 50 % (Rauschen) | Marktschreier | 45 % |
+| Wirtin Hanne (selten) | 95 % | Karawanenmeister (selten) | 95 % |
+
 ---
 
 ## GEGNER-KI
@@ -76,7 +92,9 @@ Alles in `src/lib/aiLogic.ts`.
 1. Eröffnung: niedrige, wahre Geschichte.
 2. P(Lüge) + Rauschen > Zweifel-Schwelle → **anzweifeln**. Bei wenig Respekt sinkt die Schwelle.
 3. Wahre Übertrumpfung vorhanden → erzählen (meist minimal).
-4. Sonst Bluff (bevorzugt Halbwahrheiten), wenn die Chance, dass er durchkommt, größer ist als die Trefferchance eines Zweifels. Andernfalls zweifeln.
+4. Widerspricht deine Geschichte deiner Legende und bemerkt er es (Persona-Wert), ruft er „Widerspruch!“ (vor Schritt 2 geprüft).
+5. Eigene Legende: Mit Wahrscheinlichkeit *Legenden-Disziplin* vermeidet er eigene Widersprüche, sonst nicht.
+6. Sonst Bluff (bevorzugt Halbwahrheiten), wenn die Chance, dass er durchkommt, größer ist als die Trefferchance eines Zweifels. Andernfalls zweifeln.
 
 ### Persönlichkeiten
 
@@ -85,12 +103,21 @@ Alles in `src/lib/aiLogic.ts`.
 | Zweifel-Schwelle | 0.58 (glaubt gern) | 0.48 (misstrauisch) |
 | Bluff-Neigung | hoch | niedrig |
 | Tell | „streicht über den Griff seines Schwerts“ (70 % bei Lüge, 12 % bei Wahrheit) | schwach im Text – verrät sich über den **Einsatz** (×2 bei 70 % seiner Lügen) |
-| Vorwissen | keins | kennt deine aufgedeckten Lügen aus Kapitel 1 |
+| Bemerkt Widersprüche | 55 % | 95 % |
+| Legenden-Disziplin | 60 % (vergisst eigene Geschichten) | 95 % |
+| Vorwissen | keins | kennt deine aufgedeckten Lügen und deine Legende aus Kapitel 1 |
 
 Zusätzlich gibt es neutrale Flavor-Zeilen, damit das bloße Vorhandensein eines Satzes nichts verrät.
 
-### Balance (Simulation, 400 Partien)
-Ein vernünftiger Skript-Spieler, der Tells, Einsatz und Kartenzählen *nicht* nutzt, gewinnt ~45 %. Wer die Tells liest, liegt deutlich darüber. Wer immer zweifelt, verliert immer.
+### Balance (Simulation, 300 Partien je Zeile)
+Skript-Spieler ohne Tells, Einsatz, Kartenzählen und Gäste:
+
+| | mit Gedächtnis für Legenden | ohne |
+|---|---|---|
+| Aldric | 62 % Siege (erwischt ihn ~1,3× pro Partie) | 22 % |
+| Grok | 51 % | 14 % |
+
+Wer immer zweifelt, verliert immer.
 
 ---
 
@@ -116,7 +143,6 @@ src/
 
 ## SPÄTER (nicht im MVP)
 
-- **Widersprüche:** Geschichten aus früheren Runden/Kapiteln (`legendLog`) können sich widersprechen und angreifbar werden.
-- **Publikum:** Die Gäste reagieren auf Geschichten und geben Zusatzinfos.
+- Gäste reagieren auch auf die Geschichten des Spielers (Stimmung, Beifall).
 - Mehr Rivalen mit eigenen Tells, auch mit absichtlich falschen Tells.
 - Sound, Animationen, Mobile-Feinschliff.

@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { GEGNER, MAX_RUHM, MAX_UMSTAENDE, UMSTAENDE, isBacked, ruhm, storyText } from "../lib/cardData";
+import { GEGNER, MAX_RUHM, MAX_UMSTAENDE, UMSTAENDE, isBacked, ruhm, storySummary, storyText } from "../lib/cardData";
 import type { Card, Claim, GegnerId, UmstandId } from "../lib/cardData";
+import { findContradiction } from "../lib/gameState";
+import type { LegendEntry } from "../lib/gameState";
 
 interface StoryBuilderProps {
   hand: Card[];
+  legend: LegendEntry[];
   minRuhm: number;
   submitLabel: string;
   onTell: (claim: Claim) => void;
 }
 
-export default function StoryBuilder({ hand, minRuhm, submitLabel, onTell }: StoryBuilderProps) {
+export default function StoryBuilder({ hand, legend, minRuhm, submitLabel, onTell }: StoryBuilderProps) {
   const [gegner, setGegner] = useState<GegnerId>(hand[0].gegner);
   const [umstaende, setUmstaende] = useState<UmstandId[]>([]);
   const [einsatz, setEinsatz] = useState<1 | 2>(1);
@@ -18,6 +21,7 @@ export default function StoryBuilder({ hand, minRuhm, submitLabel, onTell }: Sto
   const value = ruhm(draft);
   const truthful = isBacked(draft, hand);
   const valid = value >= minRuhm;
+  const contradiction = findContradiction(legend, draft);
 
   function toggleUmstand(id: UmstandId) {
     setUmstaende((prev) =>
@@ -90,6 +94,12 @@ export default function StoryBuilder({ hand, minRuhm, submitLabel, onTell }: Sto
             {truthful ? "Wahr – deine Trophäen belegen es" : "Gelogen – hoffentlich zweifelt keiner"}
           </span>
         </p>
+        {contradiction && (
+          <p className="mt-1 text-purple-300">
+            Widerspricht deiner Legende – dort hieß es: {storySummary(contradiction)}
+            . Man kann „Widerspruch!“ rufen.
+          </p>
+        )}
       </div>
 
       <button

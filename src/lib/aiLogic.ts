@@ -1,11 +1,13 @@
 import { ALL_CLAIMS, DECK, GEGNER, HAND_SIZE, MAX_RUHM, isBacked, ruhm } from "./cardData";
 import type { Card, Claim } from "./cardData";
-import { currentClaim, minRuhm } from "./gameState";
-import type { GameState, PlayerRecord, ToldClaim } from "./gameState";
+import { crowdComment } from "./dialogSystem";
+import { currentClaim, findContradiction, minRuhm } from "./gameState";
+import type { GameState, PlayerRecord, TellExtras, ToldClaim } from "./gameState";
 
 export type OpponentMove =
   | { type: "doubt" }
-  | { type: "tell"; claim: Claim; flavor: string | null };
+  | { type: "widerspruch" }
+  | { type: "tell"; claim: Claim; extras: TellExtras };
 
 function combinations<T>(pool: readonly T[], k: number): T[][] {
   const out: T[][] = [];
@@ -93,31 +95,39 @@ function pickEinsatz(state: GameState, truthful: boolean): 1 | 2 {
   return Math.random() < (truthful ? p.einsatzWhenTruthful : p.einsatzWhenLying) ? 2 : 1;
 }
 
-function truthfulOptions(state: GameState, min: number) {
-  return ALL_CLAIMS.filter((c) => ruhm(c) >= min && isBacked(c, state.opponentHand)).sort(
+type Story = Pick<Claim, "gegner" | "umstaende">;
+
+/** Hält er sich diesen Zug an seine Legende? Aldric vergisst gern, was er erzählt hat. */
+function legendFilter(state: GameState): (c: Story) => boolean {
+  const careful = Math.random() < state.opponent.persona.legendDiscipline;
+  return (c) => !careful || !findContradiction(state.legends.opponent, c);
+}
+
+function truthfulOptions(state: GameState, min: number, allowed: (c: Story) => boolean) {
+  return ALL_CLAIMS.filter((c) => ruhm(c) >= min && isBacked(c, state.opponentHand) && allowed(c)).sort(
     (a, b) => ruhm(a) - ruhm(b)
   );
 }
 
 /** Bluff: knapp über dem Minimum, bevorzugt Halbwahrheiten (Gegner in der Hand). */
-function chooseBluff(state: GameState, min: number): Pick<Claim, "gegner" | "umstaende"> | null {
+function chooseBluff(state: GameState, min: number, allowed: (c: Story) => boolean): Story | null {
   const candidates = ALL_CLAIMS.filter(
-    (c) => ruhm(c) >= min && ruhm(c) <= min + 1 && !isBacked(c, state.opponentHand)
+    (c) => ruhm(c) >= min && ruhm(c) <= min + 1 && !isBacked(c, state.opponentHand) && allowed(c)
   );
   if (!candidates.length) return null;
-  const score = (c: Pick<Claim, "gegner" | "umstaende">) =>
+  const score = (c: Story) =>
     (state.opponentHand.some((h) => h.gegner === c.gegner) ? 2 : 0) +
     c.umstaende.filter((u) => state.opponentHand.some((h) => h.umstand === u)).length +
     Math.random() * 1.5;
   return [...candidates].sort((a, b) => score(b) - score(a))[0];
 }
 
-function tellMove(state: GameState, claim: Pick<Claim, "gegner" | "umstaende">): OpponentMove {
+function tellMove(state: GameState, claim: Story): OpponentMove {
   const truthful = isBacked(claim, state.opponentHand);
   return {
     type: "tell",
     claim: { ...claim, einsatz: pickEinsatz(state, truthful) },
-    flavor: withFlavor(state, truthful),
+    extras: { flavor: withFlavor(state, truthful), crowd: crowdComment(state.opponent, truthful) },
   };
 }
 
@@ -125,13 +135,18 @@ export function decideOpponentMove(state: GameState): OpponentMove {
   const persona = state.opponent.persona;
   const current = currentClaim(state);
   const min = minRuhm(state);
-  const options = truthfulOptions(state, min);
+  const allowed = legendFilter(state);
+  const options = truthfulOptions(state, min, allowed);
 
   // Eröffnung: niedrig und wahr, damit Luft nach oben bleibt.
   if (!current) {
-    const low = options.slice(0, 3);
+    const pool = options.length ? options : truthfulOptions(state, min, () => true);
+    const low = pool.slice(0, 3);
     return tellMove(state, low[Math.floor(Math.random() * low.length)]);
   }
+
+  // Ein bemerkter Widerspruch ist ein sicherer Treffer.
+  if (current.contradicts && Math.random() < persona.noticeContradiction) return { type: "widerspruch" };
 
   if (min > MAX_RUHM) return { type: "doubt" };
 
@@ -148,7 +163,7 @@ export function decideOpponentMove(state: GameState): OpponentMove {
 
   // Keine wahre Übertrumpfung: Bluffen lohnt, wenn es wahrscheinlicher durchkommt,
   // als ein Zweifel trifft. Große Geschichten werden eher angezweifelt.
-  const bluff = chooseBluff(state, min);
+  const bluff = chooseBluff(state, min, allowed);
   if (!bluff) return { type: "doubt" };
   const pBluffSurvives = 0.75 - 0.5 * (ruhm(bluff) / MAX_RUHM) + (persona.bluffRate - 0.5) * 0.4;
   return pBluffSurvives > pLie ? tellMove(state, bluff) : { type: "doubt" };

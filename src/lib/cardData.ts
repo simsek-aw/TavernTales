@@ -51,6 +51,9 @@ export interface Claim {
   einsatz: 1 | 2;
 }
 
+/** Ab diesem Gegnerwert gilt eine Geschichte als „große Tat“ und geht in die Legende ein. */
+export const LEGEND_MIN_RUHM = 3;
+
 export function gegnerDef(id: GegnerId): GegnerDef {
   return GEGNER.find((g) => g.id === id)!;
 }
@@ -124,4 +127,10 @@ export function storyText(
     ? ` – ${claim.umstaende.map((id) => umstandDef(id).phrase).join(" und ")}`
     : "";
   return TEMPLATES[variant % TEMPLATES.length](g, u);
+}
+
+/** Kurzform einer Geschichte, z. B. für die Legende: „Troll – allein, nachts“. */
+export function storySummary(claim: Pick<Claim, "gegner" | "umstaende">): string {
+  const u = claim.umstaende.map((id) => umstandDef(id).label.toLowerCase()).join(", ");
+  return `${gegnerDef(claim.gegner).name} – ${u || "ohne Umstände"}`;
 }
